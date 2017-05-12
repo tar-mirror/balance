@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.48 $
+ * $Revision: 3.50 $
  *
  * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -13,6 +13,10 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.50
+ *    new option -6 forces IPv6 bind (hints.ai_family = AF_INET6)
+ *  3.49
+ *    ftok() patch applied (thanks to Vladan Djeric)  
  *  3.48
  *    Problems with setting IPV6_V6ONLY socket option are now handled 
  *    more nicely with a syslog warning message 
@@ -29,7 +33,7 @@
  *  3.32
  *    /var/run/balance may already exist (thanks to Thomas Steudten)
  *  3.31
- *    TCP_NODELAY properly switched on (thank to Kurt J. Lidl). 
+ *    TCP_NODELAY properly switched on (thanks to Kurt J. Lidl). 
  *  3.30
  *    Code cleanups and fixes (thanks to Kurt J. Lidl)
  *  3.28
@@ -97,8 +101,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.48 2010/01/29 11:22:38 t Exp t $";
-static char *revision = "$Revision: 3.48 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.50 2010/02/09 08:39:13 t Exp $";
+static char *revision = "$Revision: 3.50 $";
 
 static int release;
 static int subrelease;
@@ -124,6 +128,7 @@ static int foreground = 0;
 static int packetdump = 0;
 static int interactive = 0;
 static int shmmapfile = 0;
+static int bindipv6 = 0;
 
 static int sockbufsize = 32768;
 
@@ -142,7 +147,11 @@ int create_serversocket(char* node, char* service) {
 
   bzero(&hints, sizeof(hints));
   hints.ai_flags = AI_PASSIVE;
-  hints.ai_family = AF_UNSPEC;
+  if(bindipv6) {
+    hints.ai_family = AF_INET6;
+  } else {
+    hints.ai_family = AF_UNSPEC;
+  }
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
 
@@ -329,10 +338,53 @@ void *shm_malloc(char *file, int size)
   }
 
   if(!shmmapfile){
+
+#if defined (__SVR4) && defined (__sun)
+
+    /* vdjeric:
+       Solaris ftok() causes frequent collisions because it uses
+       only the lower 12 bits of the inode number in the 'key'.
+       See: http://bugs.opensolaris.org/bugdatabase/view_bug.do?bug_id=4265917
+    */
+    
+    FILE *rendezvousfp = NULL;
+    struct timeval ct;
+    long int seed;
+    int i;
+
+    if ((rendezvousfp = fdopen(rendezvousfd, "w+")) == NULL) {
+      perror("fdopen");
+      exit(EX_OSERR);
+    }
+
+    if ((fscanf(rendezvousfp, "0x%x\n", &key)) <= 0) {
+      gettimeofday(&ct, NULL);
+      seed = ct.tv_usec * getpid(); 
+      srand(seed);
+
+      /* Solaris rand() returns values between 0 and 0x7fff, 
+         so generate key byte by byte */
+      key = 0;
+      for (i = 0; i < sizeof(key); i++) {
+          key = (key << 8) | (rand() & 0xff);
+      }
+
+      if(fseek(rendezvousfp, 0, SEEK_SET) == -1) {
+        perror("fseek");
+        exit(EX_OSERR);
+      }
+      if (fprintf(rendezvousfp, "0x%08x\n", key) == -1) {
+        perror("fprintf");
+        exit(EX_OSERR);
+      }
+      fflush(rendezvousfp);
+    }
+#else
     if ((key = ftok(file, 'x')) == -1) {
       perror("ftok");
       exit(EX_SOFTWARE);
     }
+#endif
 
     if ((shmid = shmget(key, size, 0644 | IPC_CREAT)) == -1) {
       perror("shmget");
@@ -1429,8 +1481,11 @@ int main(int argc, char *argv[])
   connect_timeout = DEFAULTTIMEOUT;
   initialize_release_variables();
 
-  while ((c = getopt(argc, argv, "c:b:B:t:T:adfpiHM")) != EOF) {
+  while ((c = getopt(argc, argv, "c:b:B:t:T:adfpiHM6")) != EOF) {
     switch (c) {
+    case '6':
+      bindipv6 = 1;
+      break;
     case 'a':
       autodisable = 1;
       break;

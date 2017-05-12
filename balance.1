@@ -1,6 +1,6 @@
-.TH BALANCE 1 2008/04/08
+.TH BALANCE 1 "9 Feb 2010"
 .SH NAME
-balance 3.42 \- A simple TCP proxy with load balancing and failover mechanisms.
+balance 3.50 \- A simple TCP proxy with load balancing and failover mechanisms.
 .SH SYNOPSIS
 .B balance 
 [
@@ -16,7 +16,7 @@ balance 3.42 \- A simple TCP proxy with load balancing and failover mechanisms.
 .B -T sec
 ]
 [
-.B -adfpHM
+.B -adfpHM6
 ] port host1[:port1[:maxc]] [!|%] [ ... hostn[:portn[:maxc]]] 
 .PP
 .B balance
@@ -109,6 +109,9 @@ the client connection to balance is closed.
 .PP
 .I Balance
 accepts the following options:
+.TP
+.B 6
+Forces to bind on IPv6 socket by setting hints.ai_family to AF_INET6.
 .TP
 .B a
 Enable autodisable option: A channel needs to be manually re-enabled after
@@ -231,6 +234,12 @@ binds on port 80 of the local IPv6 IP address 2001:DB8::1 and distributes connec
 to the IPv4 addresses 10.1.1.1 and 10.1.1.2. 
 .PP
 .TP
+.B $ balance -b ::ffff:10.1.1.3 80 10.1.1.1 10.1.1.2
+.I Balance
+binds on port 80 of the local IPv4 IP address 10.1.1.3 (provided in IPv6 notation) 
+and distributes connections to the IPv4 addresses 10.1.1.1 and 10.1.1.2. 
+.PP
+.TP
 .B $ balance -fp imap mailserver
 Connections to the local IMAP port will always be forwarded to the
 host "mailserver".
@@ -282,7 +291,7 @@ behaviour that would have been seen directly on the destination host.
 .SH AUTHOR 
 Thomas Obermair, Inlab Software GmbH (obermair@acm.org)
 .PP
-Copyright (c) 2000-2007,2008 by Thomas Obermair (obermair@acm.org)
+Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
 and Inlab Software GmbH (http://www.inlab.de), Gruenwald, Germany.
 All rights reserved.
 .PP

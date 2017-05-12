@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.5 2010/01/29 11:22:38 t Exp t $
+# $Id: Makefile,v 1.7 2010/02/09 08:49:38 t Exp t $
 
 #CFLAGS=-g -I.
 CFLAGS=-O2 -Wall -Wstrict-prototypes -Wuninitialized
@@ -21,7 +21,7 @@ MANDIR=${BINDIR}/../man/man1
 # ROOT=Administrators
 
 CC=gcc
-RELEASE=3.48
+RELEASE=3.50
 
 all: balance 
 
