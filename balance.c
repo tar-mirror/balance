@@ -1,8 +1,8 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.40 $
+ * $Revision: 3.42 $
  *
- * Copyright (c) 2000-2006,2007 by Thomas Obermair (obermair@acm.org)
+ * Copyright (c) 2000-2007,2008 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
  * All rights reserved.
  *
@@ -13,6 +13,8 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.42
+ *    Balance compiles now on systems where IPV6_V6ONLY is undefined
  *  3.35
  *    bugfix in autodisable code (thanks to Michael Durket) 
  *  3.34
@@ -91,8 +93,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.40 2007/11/24 14:24:36 tommy Exp $";
-static char *revision = "$Revision: 3.40 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.42 2008/04/08 17:37:09 tommy Exp $";
+static char *revision = "$Revision: 3.42 $";
 
 static int release;
 static int subrelease;
@@ -160,11 +162,14 @@ int create_serversocket(char* node, char* service) {
   }
 
   sockoptoff = 0;
+
+#if defined(IPV6_V6ONLY)
   status = setsockopt(srv_socket, IPPROTO_IPV6, IPV6_V6ONLY, (char*) &sockoptoff, sizeof(sockoptoff));
   if(status < 0) {
     perror("setsockopt(IPV6_V6ONLY=0)");
     exit(EX_OSERR);
   }
+#endif
 
   sockopton = 1;
   status = setsockopt(srv_socket, SOL_SOCKET, SO_REUSEADDR, (char*) &sockopton, sizeof(sockopton));
@@ -896,7 +901,7 @@ void usage(void)
 
 
   fprintf(stderr, "  this is balance %d.%d\n", release, subrelease);
-  fprintf(stderr, "  Copyright (c) 2000-2006,2007\n");
+  fprintf(stderr, "  Copyright (c) 2000-2007,2008\n");
   fprintf(stderr, "  by Inlab Software GmbH, Gruenwald, Germany.\n");
   fprintf(stderr, "  All rights reserved.\n");
   fprintf(stderr, "\n");

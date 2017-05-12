@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.41 2007/11/24 14:43:38 tommy Exp tommy $
+# $Id: Makefile,v 1.45 2008/04/08 17:39:08 tommy Exp $
 
 #CFLAGS=-g -I.
 CFLAGS=-O2 -Wall -Wstrict-prototypes -Wuninitialized
@@ -11,9 +11,9 @@ BINDIR=/usr/sbin
 MANDIR=${BINDIR}/../man/man1
 
 # uncomment for Solaris
-#LIBRARIES=-lsocket -lnsl
-#INSTALL=/usr/ucb/install
-#BINDIR=/usr/local/libexec
+# LIBRARIES=-lsocket -lnsl
+# INSTALL=/usr/ucb/install
+# BINDIR=/usr/local/libexec
 
 # uncomment for Cygwin
 # LIBRARIES=-L/usr/local/lib -lcygipc
@@ -21,7 +21,7 @@ MANDIR=${BINDIR}/../man/man1
 # ROOT=Administrators
 
 CC=gcc
-RELEASE=3.40
+RELEASE=3.42
 
 all: balance 
 
