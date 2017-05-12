@@ -3,7 +3,7 @@
  */
 
 /*
- * $Id: balance.h,v 1.10 2007/11/24 13:53:07 tommy Exp $
+ * $Id: balance.h,v 1.1 2010/01/29 10:40:16 t Exp $
  */
 
 #include <stdio.h>

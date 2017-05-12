@@ -1,8 +1,8 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.42 $
+ * $Revision: 3.48 $
  *
- * Copyright (c) 2000-2007,2008 by Thomas Obermair (obermair@acm.org)
+ * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
  * All rights reserved.
  *
@@ -13,6 +13,9 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.48
+ *    Problems with setting IPV6_V6ONLY socket option are now handled 
+ *    more nicely with a syslog warning message 
  *  3.42
  *    Balance compiles now on systems where IPV6_V6ONLY is undefined
  *  3.35
@@ -62,7 +65,8 @@
  *  3.10
  *    Bugfix for RedHat 7.2
  *  3.9
- *    Moved rendezvous file to /var/run and cleaned main(), thanks to Kayne Naughton
+ *    Moved rendezvous file to /var/run and cleaned main(), thanks to
+ *    Kayne Naughton
  *  3.8
  *    move to sigaction(), thanks to Kayne Naughton
  *  3.5
@@ -93,8 +97,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.42 2008/04/08 17:37:09 tommy Exp $";
-static char *revision = "$Revision: 3.42 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.48 2010/01/29 11:22:38 t Exp t $";
+static char *revision = "$Revision: 3.48 $";
 
 static int release;
 static int subrelease;
@@ -134,7 +138,7 @@ static struct timeval save_tmout = { 0, 0 }; /* seconds, microseconds */
 int create_serversocket(char* node, char* service) {
   struct addrinfo hints;
   struct addrinfo *results;
-  int srv_socket, status, sockoptoff, sockopton;
+  int srv_socket, status, sockopton, sockoptoff;
 
   bzero(&hints, sizeof(hints));
   hints.ai_flags = AI_PASSIVE;
@@ -166,8 +170,7 @@ int create_serversocket(char* node, char* service) {
 #if defined(IPV6_V6ONLY)
   status = setsockopt(srv_socket, IPPROTO_IPV6, IPV6_V6ONLY, (char*) &sockoptoff, sizeof(sockoptoff));
   if(status < 0) {
-    perror("setsockopt(IPV6_V6ONLY=0)");
-    exit(EX_OSERR);
+    syslog(LOG_WARNING,"setsockopt(IPV6_V6ONLY=0) failed");
   }
 #endif
 
@@ -901,7 +904,7 @@ void usage(void)
 
 
   fprintf(stderr, "  this is balance %d.%d\n", release, subrelease);
-  fprintf(stderr, "  Copyright (c) 2000-2007,2008\n");
+  fprintf(stderr, "  Copyright (c) 2000-2009,2010\n");
   fprintf(stderr, "  by Inlab Software GmbH, Gruenwald, Germany.\n");
   fprintf(stderr, "  All rights reserved.\n");
   fprintf(stderr, "\n");
@@ -955,7 +958,8 @@ void background(void) {
 #else
   setpgrp();
 #endif
-  chdir("/");
+  if(chdir("/") <0) 
+    fprintf(stderr, "cannot chdir\n");
   close(0);
   close(1);
   close(2);
@@ -1542,9 +1546,9 @@ int main(int argc, char *argv[])
    */
 
   if (bindhost != NULL) {
-    snprintf(bindhost_address, FILENAMELEN, bindhost);
+    snprintf(bindhost_address, FILENAMELEN, "%s", bindhost);
   } else {
-    snprintf(bindhost_address, FILENAMELEN, "0.0.0.0");
+    snprintf(bindhost_address, FILENAMELEN, "%s", "0.0.0.0");
   }
 
   stat(SHMDIR, &buffer);
@@ -1596,6 +1600,8 @@ int main(int argc, char *argv[])
     shell(argument);
   }
 
+  openlog("Balance", LOG_ODELAY | LOG_PID | LOG_CONS, LOG_DAEMON);
+
   // Open a TCP socket (an Internet stream socket).
 
   sockfd = create_serversocket(bindhost, argv[0]);
@@ -1611,7 +1617,6 @@ int main(int argc, char *argv[])
     background();
   }
 
-  openlog("Balance", LOG_ODELAY | LOG_PID | LOG_CONS, LOG_DAEMON);
   common = makecommon(argc, argv, source_port);
 
   for (;;) {

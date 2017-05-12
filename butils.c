@@ -5,12 +5,12 @@
  */
 
 /*
- * $Id: butils.c,v 1.5 2005/10/21 05:46:07 tommy Exp $
+ * $Id: butils.c,v 1.1 2010/01/29 10:40:16 t Exp $
  */
 
 #include <balance.h>
 
-char* butils_rcsid="$Id: butils.c,v 1.5 2005/10/21 05:46:07 tommy Exp $";
+char* butils_rcsid="$Id: butils.c,v 1.1 2010/01/29 10:40:16 t Exp $";
 
 unsigned int hash_fold(char* s, int len)
 {

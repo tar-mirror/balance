@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.45 2008/04/08 17:39:08 tommy Exp $
+# $Id: Makefile,v 1.5 2010/01/29 11:22:38 t Exp t $
 
 #CFLAGS=-g -I.
 CFLAGS=-O2 -Wall -Wstrict-prototypes -Wuninitialized
@@ -10,18 +10,18 @@ INSTALL=install
 BINDIR=/usr/sbin
 MANDIR=${BINDIR}/../man/man1
 
-# uncomment for Solaris
+# uncomment for Solaris:
 # LIBRARIES=-lsocket -lnsl
 # INSTALL=/usr/ucb/install
 # BINDIR=/usr/local/libexec
 
-# uncomment for Cygwin
+# uncomment for Cygwin:
 # LIBRARIES=-L/usr/local/lib -lcygipc
 # BALANCE=balance.exe
 # ROOT=Administrators
 
 CC=gcc
-RELEASE=3.42
+RELEASE=3.48
 
 all: balance 
 
