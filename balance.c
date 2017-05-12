@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.56 $
+ * $Revision: 3.57 $
  *
  * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -13,6 +13,8 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.57
+ *    MAXGROUPS has been increased to 32
  *  3.56
  *    added out-of-band data handling
  *    thanks to Julian Griffiths
@@ -111,8 +113,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.56 2013/11/06 10:55:10 t Exp $";
-static char *revision = "$Revision: 3.56 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.57 2015/04/28 07:49:16 t Exp $";
+static char *revision = "$Revision: 3.57 $";
 
 static int release;
 static int subrelease;
@@ -1910,6 +1912,11 @@ int main(int argc, char *argv[])
 	}
       } else if (childpid == 0) {	// child process 
 	close(sockfd);			// close original socket 
+
+	// FIX: "#8 SIGPIPE causes unclosed channels"   
+
+	signal(SIGPIPE, SIG_IGN);
+
 	// process the request: 
 
 	stream(newsockfd, groupindex, index, (char *) &cli_addr, clilen);
