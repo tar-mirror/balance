@@ -3,7 +3,7 @@
  */
 
 /*
- * $Id: balance.h,v 1.9 2006/03/18 12:18:05 tommy Exp $
+ * $Id: balance.h,v 1.10 2007/11/24 13:53:07 tommy Exp $
  */
 
 #include <stdio.h>
@@ -69,7 +69,7 @@
 #define SHMDIR 		"/var/run/balance/"
 #define	SHMFILESUFFIX	".shm"
 
-#define MAXCHANNELS 		16	/* max channels in group          */
+#define MAXCHANNELS 		64	/* max channels in group          */
 #define MAXGROUPS   		16	/* max groups                     */
 #define MAXINPUTLINE 		128	/* max line in input mode         */
 #define DEFAULTTIMEOUT  	5	/* timeout for unreachable hosts  */

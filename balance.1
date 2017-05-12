@@ -1,6 +1,6 @@
-.TH BALANCE 1 2007/01/15
+.TH BALANCE 1 2007/11/24
 .SH NAME
-balance 3.35 \- A simple TCP proxy with load balancing and failover mechanisms.
+balance 3.40 \- A simple TCP proxy with load balancing and failover mechanisms.
 .SH SYNOPSIS
 .B balance 
 [
@@ -46,6 +46,10 @@ balance 3.35 \- A simple TCP proxy with load balancing and failover mechanisms.
 is a simple, generic "userland" TCP proxy, which allows simple
 round-robin load balancing and graceful failover between
 several destination servers.
+.PP
+.I Balance 
+supports IPv6 on the listening side which makes it a very useful tool for IPv6 migration 
+of IPv4 only services and servers.
 .PP
 .I Balance 
 is available at http://balance.sourceforge.net.  
@@ -219,6 +223,12 @@ Connection to the local SMTP port will be forwarded alterating to
 the SMTP port on host1 and host2.
 .I Balance
 runs automatically in background.
+.PP
+.TP
+.B $ balance -b 2001:DB8::1 80 10.1.1.1 10.1.1.2 
+.I Balance
+binds on port 80 of the local IPv6 IP address 2001:DB8::1 and distributes connections
+to the IPv4 addresses 10.1.1.1 and 10.1.1.2. 
 .PP
 .TP
 .B $ balance -fp imap mailserver

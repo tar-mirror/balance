@@ -1,6 +1,6 @@
 Summary: TCP load-balancing proxy server
 Name: balance
-Version: 3.35
+Version: 3.40
 Release: 1
 Group: Networking/Daemons
 Source: http://www.inlab.de/%{name}-%{version}.tar.gz
@@ -54,6 +54,9 @@ install -m 644 balance.1 $RPM_BUILD_ROOT%{_mandir}/man1/balance.1
 %dir /var/run/balance
 
 %changelog
+* Sat Nov 24 2007 T.Obermair > 3.40 
+- update version
+
 * Mon Jan 15 2007 T.Obermair > 3.35 
 - update version
 

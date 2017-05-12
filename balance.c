@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.35 $
+ * $Revision: 3.40 $
  *
  * Copyright (c) 2000-2006,2007 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -91,8 +91,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.35 2007/01/15 17:44:43 tommy Exp $";
-static char *revision = "$Revision: 3.35 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.40 2007/11/24 14:24:36 tommy Exp $";
+static char *revision = "$Revision: 3.40 $";
 
 static int release;
 static int subrelease;
@@ -129,6 +129,65 @@ static char *outbindhost = NULL;
 static struct timeval sel_tmout  = { 0, 0 }; /* seconds, microseconds */
 static struct timeval save_tmout = { 0, 0 }; /* seconds, microseconds */
 
+int create_serversocket(char* node, char* service) {
+  struct addrinfo hints;
+  struct addrinfo *results;
+  int srv_socket, status, sockoptoff, sockopton;
+
+  bzero(&hints, sizeof(hints));
+  hints.ai_flags = AI_PASSIVE;
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+  status = getaddrinfo(node, service, &hints, &results);
+  if(status != 0) {
+    fprintf(stderr,"error at getaddrinfo: %s\n", gai_strerror(status));
+    fprintf(stderr,"exiting.\n");
+    exit(EX_OSERR);
+  }
+
+  if(results == NULL) {
+    fprintf(stderr,"no matching results at getaddrinfo\n");
+    fprintf(stderr,"exiting.\n");
+    exit(EX_OSERR);
+  }
+
+  srv_socket = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
+  if(srv_socket < 0) {
+    perror("socket()");
+    exit(EX_OSERR);
+  }
+
+  sockoptoff = 0;
+  status = setsockopt(srv_socket, IPPROTO_IPV6, IPV6_V6ONLY, (char*) &sockoptoff, sizeof(sockoptoff));
+  if(status < 0) {
+    perror("setsockopt(IPV6_V6ONLY=0)");
+    exit(EX_OSERR);
+  }
+
+  sockopton = 1;
+  status = setsockopt(srv_socket, SOL_SOCKET, SO_REUSEADDR, (char*) &sockopton, sizeof(sockopton));
+  if(status < 0) {
+    perror("setsockopt(SO_REUSEADDR=1)");
+    exit(EX_OSERR);
+  }
+
+  status = bind(srv_socket, results->ai_addr, results->ai_addrlen);
+  if(status < 0) {
+    perror("bind()");
+    exit(EX_OSERR);
+  }
+
+  status = listen(srv_socket, SOMAXCONN);
+  if(status < 0) {
+    perror("listen()");
+    exit(EX_OSERR);
+  }
+
+  return(srv_socket);
+}
+
 /* locking ... */
 
 int a_readlock(off_t start, off_t len) {
@@ -152,19 +211,16 @@ repeat:
   return (rc);
 }
 
-void b_readlock(void)
-{
+void b_readlock(void) {
   a_readlock(0, 0);
 }
 
-void c_readlock(int group, int channel)
-{
+void c_readlock(int group, int channel) {
   a_readlock(((char *) &(grp_channel(common, group, channel))) -
 	     (char *) common, sizeof(CHANNEL));
 }
 
-int a_writelock(off_t start, off_t len)
-{
+int a_writelock(off_t start, off_t len) {
   int rc;
   struct flock fdata;
   fdata.l_type = F_WRLCK;
@@ -185,8 +241,7 @@ repeat:
   return (rc);
 }
 
-void b_writelock(void)
-{
+void b_writelock(void) {
   a_writelock(0, 0);
 }
 
@@ -505,8 +560,10 @@ int backward(int fromfd, int tofd, int groupindex, int channelindex)
   return (0);
 }
 
-// the connection is really established, let's transfer the data
-// as efficient as possible :-) 
+/*
+ * the connection is really established, let's transfer the data
+ *  as efficient as possible :-) 
+ */
 
 void stream2(int clientfd, int serverfd, int groupindex, int channelindex)
 {
@@ -589,7 +646,9 @@ void chld_handler(int signo) {
   while (waitpid(-1, &status, WNOHANG) > 0);
 }
 
-// a channel in a group is selected and we try to establish a connection 
+/*
+ * a channel in a group is selected and we try to establish a connection 
+ */
 
 void *stream(int arg, int groupindex, int index, char *client_address,
 	     int client_address_size) {
@@ -618,6 +677,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
       sizeof(sockbufsize));
     (void) setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbufsize,
       sizeof(sockbufsize));
+
     /*
      *  if -B is specified, balance tries to bind to it even on
      *  outgoing connections 
@@ -659,8 +719,9 @@ void *stream(int arg, int groupindex, int index, char *client_address,
 	}
       }
 
-      // here we've received an error (either 'timeout' or 'connection refused')
-      // let's start some magical failover mechanisms 
+      /* here we've received an error (either 'timeout' or 'connection refused')
+       * let's start some magical failover mechanisms 
+       */
 
       c_writelock(groupindex, index);
       chn_c(common, groupindex, index)--;
@@ -681,10 +742,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
       b_readlock();
       for (;;) {
 	for (;;) {
-	  if (grp_type(common, groupindex) == GROUP_RR
-	      || hashfailover == 1) {
-	    // HIER
-	    // 
+	  if (grp_type(common, groupindex) == GROUP_RR || hashfailover == 1) {
 	    index++;
 	    if (index >= grp_nchannels(common, groupindex)) {
 	      index = 0;
@@ -830,11 +888,17 @@ void initialize_release_variables(void)
 static
 void usage(void)
 {
-  fprintf(stderr, "\n");
-  fprintf(stderr, "balance %d.%d\n", release, subrelease);
-  fprintf(stderr,
-	  "Copyright (c) 2000-2006,2007 by Inlab Software GmbH, Gruenwald, Germany.\n");
-  fprintf(stderr, "All rights reserved.\n");
+  fprintf(stderr," _           _\n");
+  fprintf(stderr,"| |__   __ _| | __ _ _ __   ___ ___\n");
+  fprintf(stderr,"| '_ \\ / _` | |/ _` | '_ \\ / __/ _ \\\n");
+  fprintf(stderr,"| |_) | (_| | | (_| | | | | (_|  __/\n");
+  fprintf(stderr,"|_.__/ \\__,_|_|\\__,_|_| |_|\\___\\___|\n");
+
+
+  fprintf(stderr, "  this is balance %d.%d\n", release, subrelease);
+  fprintf(stderr, "  Copyright (c) 2000-2006,2007\n");
+  fprintf(stderr, "  by Inlab Software GmbH, Gruenwald, Germany.\n");
+  fprintf(stderr, "  All rights reserved.\n");
   fprintf(stderr, "\n");
 
   fprintf(stderr, "usage:\n");
@@ -859,9 +923,11 @@ void usage(void)
   fprintf(stderr, "   %%        as !, but declaring previous group to be a Hash Type\n");
 
   fprintf(stderr, "\n");
-  fprintf(stderr, "example:\n");
+  fprintf(stderr, "examples:\n");
   fprintf(stderr, "  balance smtp mailhost1:smtp mailhost2:25 mailhost3\n");
   fprintf(stderr, "  balance -i smtp\n");
+  fprintf(stderr, "  balance -b 2001:DB8::1 80 10.1.1.1 10.1.1.2\n");
+  fprintf(stderr, "  balance -b 2001:DB8::1 80\n");
   fprintf(stderr, "\n");
 
   exit(EX_USAGE);
@@ -1339,13 +1405,12 @@ int main(int argc, char *argv[])
   int startindex;
   int sockfd, newsockfd, childpid;
   unsigned int clilen;
-  int sockopton = 1;
   int c;
   int source_port;
   int fd;
   char *argument = NULL;
   struct stat buffer;
-  struct sockaddr_in cli_addr, serv_addr;
+  struct sockaddr_in cli_addr;
   struct sigaction usr1_action, chld_action;
 #ifdef BalanceBSD
 #else
@@ -1465,19 +1530,17 @@ int main(int argc, char *argv[])
   if (debugflag) {
     fprintf(stderr, "source port %d\n", source_port);
   }
-  // Bind our local address so that the client can send to us.
-  // -b !
 
-  bzero((char *) &serv_addr, sizeof(serv_addr));
-  serv_addr.sin_family = AF_INET;
+  /*
+   * Bind our local address so that the client can send to us.
+   * Handling of -b option.
+   */
+
   if (bindhost != NULL) {
-    setipaddress(&serv_addr.sin_addr, bindhost);
-    sprintf(bindhost_address, inet_ntoa(serv_addr.sin_addr));
+    snprintf(bindhost_address, FILENAMELEN, bindhost);
   } else {
-    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    sprintf(bindhost_address, "0.0.0.0");
+    snprintf(bindhost_address, FILENAMELEN, "0.0.0.0");
   }
-  serv_addr.sin_port = htons(source_port);
 
   stat(SHMDIR, &buffer);
   if (!S_ISDIR(buffer.st_mode)) {
@@ -1493,6 +1556,7 @@ int main(int argc, char *argv[])
     }
     umask(old);
   }
+
   sprintf(rendezvousfile, "%sbalance.%d.%s", SHMDIR, source_port,
 	  bindhost_address);
 
@@ -1526,29 +1590,16 @@ int main(int argc, char *argv[])
     }
     shell(argument);
   }
+
   // Open a TCP socket (an Internet stream socket).
 
-  if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    err_dump("can't open stream socket");
-  }
+  sockfd = create_serversocket(bindhost, argv[0]);
 
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
-		 (char *) &sockopton, sizeof(int)) == -1) {
-    perror("setsockopt(SO_REUSEADDR)");
-    err_dump("can't so_reuseaddr");
-  }
   (void) setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sockbufsize,
     sizeof(sockbufsize));
   (void) setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbufsize,
     sizeof(sockbufsize));
 
-  if (debugflag) {
-    fprintf(stderr, "bindhost_adress=[%s]\n", bindhost_address);
-  }
-
-  if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-    err_dump("can't bind local address");
-  }
   // init of common (*after* bind()) 
 
   if (!foreground) {
@@ -1557,8 +1608,6 @@ int main(int argc, char *argv[])
 
   openlog("Balance", LOG_ODELAY | LOG_PID | LOG_CONS, LOG_DAEMON);
   common = makecommon(argc, argv, source_port);
-
-  listen(sockfd, SOMAXCONN);
 
   for (;;) {
     int index;
@@ -1579,10 +1628,13 @@ int main(int argc, char *argv[])
       fprintf(stderr, "connect from %s\n", inet_ntoa(cli_addr.sin_addr));
     }
 
-    // the balancing itself ...
-    // groupindex = 0
-    // decision wich channel to use for the first try 
-    // client address available in cli_addr.sin_addr
+    /* 
+     * the balancing itself:
+     * - groupindex = 0
+     * - decision wich channel to use for the first try 
+     * - client address available in cli_addr.sin_addr
+     *
+     */
 
     b_writelock();
     for (;;) {
