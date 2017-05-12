@@ -3,7 +3,7 @@
  */
 
 /*
- * $Id: balance.h,v 1.1 2010/01/29 10:40:16 t Exp $
+ * $Id: balance.h,v 1.2 2011/02/10 13:52:47 t Exp $
  */
 
 #include <stdio.h>
@@ -70,7 +70,7 @@
 #define	SHMFILESUFFIX	".shm"
 
 #define MAXCHANNELS 		64	/* max channels in group          */
-#define MAXGROUPS   		16	/* max groups                     */
+#define MAXGROUPS   		32	/* max groups                     */
 #define MAXINPUTLINE 		128	/* max line in input mode         */
 #define DEFAULTTIMEOUT  	5	/* timeout for unreachable hosts  */
 #define DEFAULTSELTIMEOUT  	0 	/* timeout for select             */

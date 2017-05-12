@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.54 $
+ * $Revision: 3.56 $
  *
  * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -13,6 +13,9 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.56
+ *    added out-of-band data handling
+ *    thanks to Julian Griffiths
  *  3.54
  *    fixed hash_fold bug regarding incoming IPv4 and IPv6 source addresses
  *  3.52
@@ -108,8 +111,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.54 2010/12/03 12:47:10 t Exp $";
-static char *revision = "$Revision: 3.54 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.56 2013/11/06 10:55:10 t Exp $";
+static char *revision = "$Revision: 3.56 $";
 
 static int release;
 static int subrelease;
@@ -119,6 +122,25 @@ static int rendezvousfd;
 #ifndef	NO_MMAP
 static int shmfilefd;
 #endif
+
+static int cur_s;
+static int cur_r;
+
+static void  urg_handler(int signo) {
+	int n;
+	char buf[256];
+
+	n = recv(cur_r,buf,sizeof buf,MSG_OOB);
+	if ( n < 0 ) {
+		//printf("ERROR: recv(2)\n");
+	}else{
+
+		buf[n] = 0;
+		//printf("URG '%s' (%d)\n", buf,n);
+		send(cur_s, buf,strlen(buf),MSG_OOB);
+	}
+	signal(SIGURG, urg_handler);
+}
 
 static int err_dump(char *text) {
   fprintf(stderr, "balance: %s\n", text);
@@ -591,7 +613,23 @@ int forward(int fromfd, int tofd, int groupindex, int channelindex)
   ssize_t rc;
   unsigned char buffer[MAXTXSIZE];
 
-  rc = read(fromfd, buffer, MAXTXSIZE);
+	cur_s = tofd;
+	cur_r = fromfd;
+/*
+  struct sigaction urg_action;
+
+    urg_action.sa_handler = urg_handler;
+    urg_action.sa_flags = SA_RESTART;
+    sigemptyset(&urg_action.sa_mask);
+    sigaction(SIGURG, &urg_action, NULL);
+*/
+	signal(SIGURG, &urg_handler);
+
+
+
+  //rc = read(fromfd, buffer, MAXTXSIZE);
+  fcntl(fromfd, F_SETOWN,getpid());
+  rc = recv(fromfd, buffer, MAXTXSIZE, 0);
 
   if (packetdump) {
     printf("-> %d\n", (int) rc);
@@ -615,7 +653,6 @@ int backward(int fromfd, int tofd, int groupindex, int channelindex)
 {
   ssize_t rc;
   unsigned char buffer[MAXTXSIZE];
-
   rc = read(fromfd, buffer, MAXTXSIZE);
 
   if (packetdump) {
@@ -711,6 +748,7 @@ void stream2(int clientfd, int serverfd, int groupindex, int channelindex)
   exit(EX_OK);
 }
 
+
 void alrm_handler(int signo) {
 }
 
@@ -777,6 +815,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
 	chn_ipaddr(common, groupindex, index).s_addr;
     serv_addr.sin_port = htons(chn_port(common, groupindex, index));
     b_unlock();
+
 
     alrm_action.sa_handler = alrm_handler;
     alrm_action.sa_flags = 0;	// don't restart !
@@ -1613,6 +1652,8 @@ int main(int argc, char *argv[])
       usage();
     }
   }
+
+
   usr1_action.sa_handler = usr1_handler;
   usr1_action.sa_flags = SA_RESTART;
   sigemptyset(&usr1_action.sa_mask);
