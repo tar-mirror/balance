@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.34 2006/03/18 12:21:28 tommy Exp $
+# $Id: Makefile,v 1.38 2007/01/15 17:48:55 tommy Exp tommy $
 
 #CFLAGS=-g -I.
 CFLAGS=-O2 -Wall -Wstrict-prototypes -Wuninitialized
@@ -21,7 +21,7 @@ MANDIR=${BINDIR}/../man/man1
 # ROOT=Administrators
 
 CC=gcc
-RELEASE=3.34
+RELEASE=3.35
 
 all: balance 
 
@@ -38,7 +38,8 @@ balance.pdf: balance.ps
 	ps2pdf balance.ps balance.pdf	
 		
 balance.ps: balance.1
-	groff -f H -man balance.1 > balance.ps
+	troff -Tpost -man balance.1 | /usr/lib/lp/postscript/dpost > balance.ps
+	# groff -f H -man balance.1 > balance.ps
 
 ci:		
 	ci -l *.c *.h Makefile balance.1 README balance.spec 
@@ -59,7 +60,7 @@ release: balance.pdf
 	mkdir ./releases/balance-$(RELEASE)
 	cp balance.1 balance.pdf balance.c balance.h butils.c COPYING Makefile README ./releases/balance-$(RELEASE)
 	cp balance.spec ./releases/balance-$(RELEASE)/balance.spec
-	cd releases; tar --owner=0 --group=0 -cvf balance-$(RELEASE).tar ./balance-$(RELEASE)
+	cd releases; tar -cvf balance-$(RELEASE).tar ./balance-$(RELEASE)
 	cd releases; gzip balance-$(RELEASE).tar
 
 rpm:	ever	

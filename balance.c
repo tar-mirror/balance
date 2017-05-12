@@ -1,8 +1,8 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.34 $
+ * $Revision: 3.35 $
  *
- * Copyright (c) 2000-2005,2006 by Thomas Obermair (obermair@acm.org)
+ * Copyright (c) 2000-2006,2007 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
  * All rights reserved.
  *
@@ -13,6 +13,8 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.35
+ *    bugfix in autodisable code (thanks to Michael Durket) 
  *  3.34
  *    syslog logging added (finally)
  *    -a autodisable option added (thanks to Mitsuru IWASAKI)
@@ -89,8 +91,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.34 2006/03/18 12:18:05 tommy Exp $";
-static char *revision = "$Revision: 3.34 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.35 2007/01/15 17:44:43 tommy Exp $";
+static char *revision = "$Revision: 3.35 $";
 
 static int release;
 static int subrelease;
@@ -100,7 +102,6 @@ static int rendezvousfd;
 #ifndef	NO_MMAP
 static int shmfilefd;
 #endif
-
 
 static int err_dump(char *text) {
   fprintf(stderr, "balance: %s\n", text);
@@ -664,7 +665,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
       c_writelock(groupindex, index);
       chn_c(common, groupindex, index)--;
       if(autodisable) {
-	if(chn_status(common, groupindex, 0) != 0) {
+	if(chn_status(common, groupindex, index) != 0) {
 	  if(foreground) {
 	    fprintf(stderr, "connection failed group %d channel %d\n", groupindex, index);
 	    fprintf(stderr, "%s:%d needs to be enabled manually using balance -i after the problem is solved\n", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port));
@@ -672,7 +673,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
 	      syslog(LOG_NOTICE,"connection failed group %d channel %d", groupindex, index);
 	      syslog(LOG_NOTICE,"%s:%d needs to be enabled manually using balance -i after the problem is solved", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port));
 	  }
-	  chn_status(common, groupindex, 0) = 0;
+	  chn_status(common, groupindex, index) = 0;
 	}
       }
       c_unlock(groupindex, index);
@@ -832,7 +833,7 @@ void usage(void)
   fprintf(stderr, "\n");
   fprintf(stderr, "balance %d.%d\n", release, subrelease);
   fprintf(stderr,
-	  "Copyright (c) 2000-2005,2006 by Inlab Software GmbH, Gruenwald, Germany.\n");
+	  "Copyright (c) 2000-2006,2007 by Inlab Software GmbH, Gruenwald, Germany.\n");
   fprintf(stderr, "All rights reserved.\n");
   fprintf(stderr, "\n");
 
