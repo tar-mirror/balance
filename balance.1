@@ -1,6 +1,6 @@
-.TH BALANCE 1 "9 Feb 2010"
+.TH BALANCE 1 "14 Feb 2010"
 .SH NAME
-balance 3.50 \- A simple TCP proxy with load balancing and failover mechanisms.
+balance 3.52 \- A simple TCP proxy with load balancing and failover mechanisms.
 .SH SYNOPSIS
 .B balance 
 [
@@ -163,6 +163,8 @@ command line interface. The access permission using this interface are
 determined by the access restrictions of the shared memory segment in effect. 
 .I help or "?"
 prints out a short command overview, 
+.I assign
+allows to change the host_port assignment of a channel (only if disabled),
 .I create
 allows to establish a new destination definition (channel) consisting of 
 host and port in the current group,

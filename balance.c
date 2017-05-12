@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.50 $
+ * $Revision: 3.52 $
  *
  * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -13,6 +13,11 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.52
+ *    thanks to David J. Jilk from Standing Cloud, Inc. for the following:
+ *    added "nobuffer" functionality to interactive shell IO
+ *    added new "assign" interactive command
+ *    fixed locking bug
  *  3.50
  *    new option -6 forces IPv6 bind (hints.ai_family = AF_INET6)
  *  3.49
@@ -101,8 +106,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.50 2010/02/09 08:39:13 t Exp $";
-static char *revision = "$Revision: 3.50 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.52 2010/02/14 18:35:09 t Exp $";
+static char *revision = "$Revision: 3.52 $";
 
 static int release;
 static int subrelease;
@@ -1136,6 +1141,12 @@ int shell(char *argument)
   char line[MAXINPUTLINE];
   char *command;
 
+  // DJJ, Standing Cloud, Inc.
+  //    In interactive mode, don't buffer stdout/stderr, so that
+  //    other programs can operate balance through I/O streams
+  setvbuf(stdout, NULL, _IONBF, 0);
+  setvbuf(stderr, NULL, _IONBF, 0);
+
   if (common->release == 0) {
     printf("no master process, exiting.\n");
     exit(EX_UNAVAILABLE);
@@ -1203,33 +1214,22 @@ int shell(char *argument)
       } else if (mycmp(command, "help") || mycmp(command, "?")) {
 	printf("available commands:\n");
 
-	printf
-	    ("  create <host> <port>  creates a channel in the current group\n");
-	printf
-	    ("  disable <channel>     disables specified channel in current group\n");
-	printf
-	    ("  enable <channel>      enables channel in current group\n");
-	printf
-	    ("  group <group>         changes current group to <group>\n");
-	printf
-	    ("  hash                  sets distribution scheme of current group to Hash\n");
-	printf("  help                  prints this message\n");
-	printf
-	    ("  kill                  kills master process and quits interactive mode\n");
-	printf
-	    ("  maxc <channel> <maxc> specifies new maxc for channel of current group\n");
-	printf
-	    ("  mrtg-bytes <grp> <ch> print bytes in/out in MRTG format\n");
-	printf
-	    ("  mrtg-conns <grp> <ch> print total connections in MRTG format\n");
-	printf("  quit                  quit interactive mode\n");
-	printf
-	    ("  reset <channel>       reset all counters of channel in current group\n");
-	printf
-	    ("  rr                    sets distribution scheme of current group to Round Robin\n");
-	printf
-	    ("  show                  show all channels in all groups\n");
-	printf("  version               show version id\n");
+	printf("  create <host> <port>           creates a channel in the current group\n");
+        printf("  assign <channel> <host> <port> reassigns a channel in the current group\n");
+	printf("  disable <channel>              disables specified channel in current group\n");
+	printf("  enable <channel>               enables channel in current group\n");
+	printf("  group <group>                  changes current group to <group>\n");
+	printf("  hash                           sets distribution scheme of current group to Hash\n");
+	printf("  help                           prints this message\n");
+	printf("  kill                           kills master process and quits interactive mode\n");
+	printf("  maxc <channel> <maxc>          specifies new maxc for channel of current group\n");
+	printf("  mrtg-bytes <grp> <ch>          print bytes in/out in MRTG format\n");
+	printf("  mrtg-conns <grp> <ch>          print total connections in MRTG format\n");
+	printf("  quit                           quit interactive mode\n");
+	printf("  reset <channel>                reset all counters of channel in current group\n");
+	printf("  rr                             sets distribution scheme of current group to Round Robin\n");
+	printf("  show                           show all channels in all groups\n");
+	printf("  version                        show version id\n");
 
       } else if (mycmp(command, "kill")) {
 	kill(common->pid, SIGKILL);
@@ -1250,14 +1250,14 @@ int shell(char *argument)
 	  if (n < 0 || n >= grp_nchannels(common, currentgroup)) {
 	    printf("no such channel %d\n", n);
 	  } else {
-	    c_writelock(0, n);
+	    c_writelock(currentgroup, n);
 	    if (chn_status(common, currentgroup, n) == 0) {
 	      printf("channel %d already disabled\n", n);
 	    } else {
 	      chn_status(common, currentgroup, n) = 0;
 	      printf("channel %d disabled\n", n);
 	    }
-	    c_unlock(0, n);
+	    c_unlock(currentgroup, n);
 	  }
 	} else {
 	  printf("syntax error\n");
@@ -1354,7 +1354,41 @@ int shell(char *argument)
 	}
 	b_unlock();
 
-      } else if (mycmp(command, "maxc")) {
+    } else if (mycmp(command, "assign")) {
+        char *arg1, *arg2, *arg3;
+
+          if ((arg1 = strtok(NULL, " \t\n")) != NULL) {
+        int chn = atoi(arg1);
+            if (chn < 0 || chn >= MAXCHANNELS
+                      || chn >= grp_nchannels(common, currentgroup)) {
+               printf("unknown channel\n");
+        } else {
+            c_writelock(currentgroup, chn);
+            if (chn_status(common, currentgroup, chn) != 0) {
+               printf("channel must be disabled to assign new address\n");
+            } else if ((arg2 = strtok(NULL, " \t\n")) != NULL) {
+                if ((arg3 = strtok(NULL, " \t\n")) != NULL) {
+                   if (setaddress_noexitonerror
+                         (&chn_ipaddr(common, currentgroup, chn),
+                          &chn_port(common, currentgroup, chn),
+                          arg2, getport(arg3))) {
+                       printf("channel reassigned\n");
+                   } else {
+                       printf("invalid address\n");
+                   }
+                } else {
+                   printf("syntax error\n");
+                }
+            } else {
+                printf("syntax error\n");
+            }
+            c_unlock(currentgroup, chn);
+        }
+      } else {
+        printf("syntax error\n");
+      }
+
+    } else if (mycmp(command, "maxc")) {
 	char *arg1, *arg2;
 	b_writelock();
 	if ((arg1 = strtok(NULL, " \t\n")) != NULL) {
@@ -1375,7 +1409,7 @@ int shell(char *argument)
 	}
 	b_unlock();
 
-      } else if (mycmp(command, "mrtg-bytes")) {
+    } else if (mycmp(command, "mrtg-bytes")) {
 	char *arg1, *arg2;
 	int mygroup, mychannel;
 	b_writelock();
