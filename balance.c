@@ -1,6 +1,6 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.52 $
+ * $Revision: 3.54 $
  *
  * Copyright (c) 2000-2009,2010 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
@@ -13,6 +13,8 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.54
+ *    fixed hash_fold bug regarding incoming IPv4 and IPv6 source addresses
  *  3.52
  *    thanks to David J. Jilk from Standing Cloud, Inc. for the following:
  *    added "nobuffer" functionality to interactive shell IO
@@ -106,8 +108,8 @@
 
 #include <balance.h>
 
-const char *balance_rcsid = "$Id: balance.c,v 3.52 2010/02/14 18:35:09 t Exp $";
-static char *revision = "$Revision: 3.52 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.54 2010/12/03 12:47:10 t Exp $";
+static char *revision = "$Revision: 3.54 $";
 
 static int release;
 static int subrelease;
@@ -152,9 +154,16 @@ int create_serversocket(char* node, char* service) {
 
   bzero(&hints, sizeof(hints));
   hints.ai_flags = AI_PASSIVE;
+
   if(bindipv6) {
+    if(debugflag) {
+      fprintf(stderr, "using AF_INET6\n");
+    }
     hints.ai_family = AF_INET6;
   } else {
+    if(debugflag) {
+      fprintf(stderr, "using AF_UNSPEC\n");
+    }
     hints.ai_family = AF_UNSPEC;
   }
   hints.ai_socktype = SOCK_STREAM;
@@ -189,7 +198,9 @@ int create_serversocket(char* node, char* service) {
 #endif
 
   sockopton = 1;
+
   status = setsockopt(srv_socket, SOL_SOCKET, SO_REUSEADDR, (char*) &sockopton, sizeof(sockopton));
+
   if(status < 0) {
     perror("setsockopt(SO_REUSEADDR=1)");
     exit(EX_OSERR);
@@ -857,10 +868,12 @@ void *stream(int arg, int groupindex, int index, char *client_address,
 	      break;
 	    } else if (grp_type(common, groupindex) == GROUP_HASH) {
 	      unsigned int uindex;
-	      uindex = hash_fold(client_address, client_address_size);
+	      uindex = hash_fold((unsigned char*) &(((struct sockaddr_in6 *) &client_address)->sin6_addr), client_address_size);
 
-	      if (debugflag)
-		fprintf(stderr, "fold returns %d\n", uindex);
+	      if (debugflag) {
+		fprintf(stderr, "HASH-method: fold returns %u\n", uindex);
+              }
+
 	      index = uindex % grp_nchannels(common, groupindex);
 	      if (debugflag)
 		fprintf(stderr, "modulo %d gives %d\n",
@@ -1505,7 +1518,7 @@ int main(int argc, char *argv[])
   int fd;
   char *argument = NULL;
   struct stat buffer;
-  struct sockaddr_in cli_addr;
+  struct sockaddr_storage cli_addr;
   struct sigaction usr1_action, chld_action;
 #ifdef BalanceBSD
 #else
@@ -1691,14 +1704,12 @@ int main(int argc, char *argv[])
 
   openlog("Balance", LOG_ODELAY | LOG_PID | LOG_CONS, LOG_DAEMON);
 
-  // Open a TCP socket (an Internet stream socket).
+  /*  Open a TCP socket (an Internet stream socket). */
 
   sockfd = create_serversocket(bindhost, argv[0]);
 
-  (void) setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sockbufsize,
-    sizeof(sockbufsize));
-  (void) setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbufsize,
-    sizeof(sockbufsize));
+  (void) setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sockbufsize, sizeof(sockbufsize));
+  (void) setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbufsize, sizeof(sockbufsize));
 
   // init of common (*after* bind()) 
 
@@ -1724,14 +1735,16 @@ int main(int argc, char *argv[])
     }
 
     if (debugflag) {
-      fprintf(stderr, "connect from %s\n", inet_ntoa(cli_addr.sin_addr));
+      char buf[1024];
+      inet_ntop(AF_INET6,&(((struct sockaddr_in6*) &cli_addr)->sin6_addr),buf,1024);
+      fprintf(stderr, "connect from %s clilen=%d\n", buf, clilen);
     }
 
     /* 
      * the balancing itself:
      * - groupindex = 0
      * - decision wich channel to use for the first try 
-     * - client address available in cli_addr.sin_addr
+     * - client address available in cli_addr
      *
      */
 
@@ -1756,9 +1769,12 @@ int main(int argc, char *argv[])
 	    }
 	  }
 	} else if (grp_type(common, groupindex) == GROUP_HASH) {
-	  uindex = hash_fold((char *) &cli_addr.sin_addr, sizeof(cli_addr.sin_addr));
-	  if (debugflag)
-	    fprintf(stderr, "fold returns %d\n", uindex);
+	  uindex = hash_fold((unsigned char*) &(((struct sockaddr_in6 *) &cli_addr)->sin6_addr), clilen);
+   
+	  if(debugflag) {
+	    fprintf(stderr, "HASH-method: fold returns %u\n", uindex);
+          }
+
 	  index = uindex % grp_nchannels(common, groupindex);
 	  if (debugflag)
 	    fprintf(stderr, "modulo %d gives %d\n",
@@ -1855,8 +1871,7 @@ int main(int argc, char *argv[])
 	close(sockfd);			// close original socket 
 	// process the request: 
 
-	stream(newsockfd, groupindex, index, (char *) &cli_addr.sin_addr,
-	       sizeof(cli_addr.sin_addr));
+	stream(newsockfd, groupindex, index, (char *) &cli_addr, clilen);
 	exit(EX_OK);
       }
     }
