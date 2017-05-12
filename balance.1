@@ -1,6 +1,6 @@
-.TH BALANCE 1 2005/11/15
+.TH BALANCE 1 2006/03/18
 .SH NAME
-balance 3.32 \- A simple TCP proxy with load balancing and failover mechanisms.
+balance 3.34 \- A simple TCP proxy with load balancing and failover mechanisms.
 .SH SYNOPSIS
 .B balance 
 [
@@ -16,7 +16,7 @@ balance 3.32 \- A simple TCP proxy with load balancing and failover mechanisms.
 .B -T sec
 ]
 [
-.B -dfpH
+.B -adfpHM
 ] port host1[:port1[:maxc]] [!|%] [ ... hostn[:portn[:maxc]]] 
 .PP
 .B balance
@@ -26,6 +26,8 @@ balance 3.32 \- A simple TCP proxy with load balancing and failover mechanisms.
 .B -i
 [
 .B -d
+] [
+.B -M
 ] port
 .PP
 .B balance
@@ -35,6 +37,9 @@ balance 3.32 \- A simple TCP proxy with load balancing and failover mechanisms.
 .B -c cmd
 [
 .B -d
+]
+[
+.B -M
 ] port
 .SH DESCRIPTION
 .I Balance
@@ -101,6 +106,10 @@ the client connection to balance is closed.
 .I Balance
 accepts the following options:
 .TP
+.B a
+Enable autodisable option: A channel needs to be manually re-enabled after
+a failure.
+.TP
 .B b
 Bindhost:
 .I Balance
@@ -132,6 +141,10 @@ tells
 .I balance 
 to stay in foreground. This might be useful for 
 testing and debugging since 
+.TP
+.B M
+Use memory mapping for IPC instead of shared memory
+.TP
 .I balance 
 can be stopped in that mode using ^C (or other interrupt character).
 .TP
@@ -260,7 +273,7 @@ behaviour that would have been seen directly on the destination host.
 .SH AUTHOR 
 Thomas Obermair, Inlab Software GmbH (obermair@acm.org)
 .PP
-Copyright (c) 2000-2004,2005 by Thomas Obermair (obermair@acm.org)
+Copyright (c) 2000-2005,2006 by Thomas Obermair (obermair@acm.org)
 and Inlab Software GmbH (http://www.inlab.de), Gruenwald, Germany.
 All rights reserved.
 .PP

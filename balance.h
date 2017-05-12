@@ -3,7 +3,7 @@
  */
 
 /*
- * $Id: balance.h,v 1.7 2005/10/21 05:46:07 tommy Exp $
+ * $Id: balance.h,v 1.9 2006/03/18 12:18:05 tommy Exp $
  */
 
 #include <stdio.h>
@@ -14,6 +14,11 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <sysexits.h>
+#include <syslog.h>
+#ifndef	NO_MMAP
+#include <unistd.h>
+#include <sys/mman.h>
+#endif
 
 #ifdef __FreeBSD__
 #define BalanceBSD 1
@@ -59,9 +64,10 @@
 #define FILENAMELEN 	1024
 /*
  * this should be a directory that isn't cleaned up periodically, or at
- * reboot of the machine (/tmp is cleaned at reboot)
+ * reboot of the machine (/tmp is cleaned at reboot on many OS versions)
  */
 #define SHMDIR 		"/var/run/balance/"
+#define	SHMFILESUFFIX	".shm"
 
 #define MAXCHANNELS 		16	/* max channels in group          */
 #define MAXGROUPS   		16	/* max groups                     */

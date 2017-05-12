@@ -1,8 +1,8 @@
 /*
  * balance - a balancing tcp proxy
- * $Revision: 3.32 $
+ * $Revision: 3.34 $
  *
- * Copyright (c) 2000-2004,2005 by Thomas Obermair (obermair@acm.org)
+ * Copyright (c) 2000-2005,2006 by Thomas Obermair (obermair@acm.org)
  * and Inlab Software GmbH (info@inlab.de), Gruenwald, Germany.
  * All rights reserved.
  *
@@ -13,10 +13,16 @@
  *
  * This program is dedicated to Richard Stevens...
  *
+ *  3.34
+ *    syslog logging added (finally)
+ *    -a autodisable option added (thanks to Mitsuru IWASAKI)
+ *  3.33
+ *    SO_KEEPALIVE switched on (suggested and implemented by A. Fluegel)
+ *    new option -M to use a memory mapped file instead of IPC shared memory
  *  3.32
  *    /var/run/balance may already exist (thanks to Thomas Steudten)
  *  3.31
- *    TCP_NODELAY properly switched on (thanks to Kurt J. Lidl). 
+ *    TCP_NODELAY properly switched on (thank to Kurt J. Lidl). 
  *  3.30
  *    Code cleanups and fixes (thanks to Kurt J. Lidl)
  *  3.28
@@ -83,15 +89,18 @@
 
 #include <balance.h>
 
-const char *balance_rcsid =
-    "$Id: balance.c,v 3.32 2005/11/16 17:07:21 tommy Exp $";
-static char *revision = "$Revision: 3.32 $";
+const char *balance_rcsid = "$Id: balance.c,v 3.34 2006/03/18 12:18:05 tommy Exp $";
+static char *revision = "$Revision: 3.34 $";
 
 static int release;
 static int subrelease;
 
 static char rendezvousfile[FILENAMELEN];
 static int rendezvousfd;
+#ifndef	NO_MMAP
+static int shmfilefd;
+#endif
+
 
 static int err_dump(char *text) {
   fprintf(stderr, "balance: %s\n", text);
@@ -102,10 +111,12 @@ static int err_dump(char *text) {
 COMMON *common;
 
 static int hashfailover = 0;
-static int debugflag;
-static int foreground;
-static int packetdump;
-static int interactive;
+static int autodisable = 0;
+static int debugflag = 0;
+static int foreground = 0;
+static int packetdump = 0;
+static int interactive = 0;
+static int shmmapfile = 0;
 
 static int sockbufsize = 32768;
 
@@ -219,25 +230,58 @@ void c_unlock(int group, int channel)
 
 void *shm_malloc(char *file, int size)
 {
+  char *data = NULL;
   key_t key;
   int shmid;
-  char *data;
 
-  if ((key = ftok(file, 'x')) == -1) {
-    perror("ftok");
-    exit(EX_SOFTWARE);
+  if(shmmapfile){
+#ifndef	NO_MMAP
+    char shmfile[FILENAMELEN];
+
+    strcpy(shmfile, file);
+    strcat(shmfile, SHMFILESUFFIX);
+    shmfilefd = open(shmfile, O_RDWR | O_CREAT, 0644);
+    if(shmfilefd < 0) {
+      fprintf(stderr, "Warning: Cannot open file `%s', switching to IPC\n", shmfile);
+      shmmapfile = 0;
+    }
+    if(shmmapfile) {
+      if(ftruncate(shmfilefd, size) < 0) {
+        fprintf(stderr, "Warning: Cannot set file size on `%s', switching to IPC\n", shmfile);
+        close(shmfilefd);
+        shmmapfile = 0;
+      }
+    }
+    if(shmmapfile) {
+      data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, shmfilefd, 0);
+      if(!data || data == MAP_FAILED) {
+        fprintf(stderr, "Warning: Cannot map file `%s', switching to IPC\n", shmfile);
+        close(shmfilefd);
+        shmmapfile = 0;
+
+      }
+    }
+#endif
   }
 
-  if ((shmid = shmget(key, size, 0644 | IPC_CREAT)) == -1) {
-    perror("shmget");
-    exit(EX_OSERR);
+  if(!shmmapfile){
+    if ((key = ftok(file, 'x')) == -1) {
+      perror("ftok");
+      exit(EX_SOFTWARE);
+    }
+
+    if ((shmid = shmget(key, size, 0644 | IPC_CREAT)) == -1) {
+      perror("shmget");
+      exit(EX_OSERR);
+    }
+
+    data = shmat(shmid, (void *) 0, 0);
+    if (data == (char *) (-1)) {
+     perror("shmat");
+      exit(EX_OSERR);
+    }
   }
 
-  data = shmat(shmid, (void *) 0, 0);
-  if (data == (char *) (-1)) {
-    perror("shmat");
-    exit(EX_OSERR);
-  }
   return (data);
 }
 
@@ -418,7 +462,7 @@ int forward(int fromfd, int tofd, int groupindex, int channelindex)
   rc = read(fromfd, buffer, MAXTXSIZE);
 
   if (packetdump) {
-    printf("-> %d\n", rc);
+    printf("-> %d\n", (int) rc);
     print_packet(buffer, rc);
   }
 
@@ -443,7 +487,7 @@ int backward(int fromfd, int tofd, int groupindex, int channelindex)
   rc = read(fromfd, buffer, MAXTXSIZE);
 
   if (packetdump) {
-    printf("-< %d\n", rc);
+    printf("-< %d\n", (int) rc);
     print_packet(buffer, rc);
   }
 
@@ -476,6 +520,10 @@ void stream2(int clientfd, int serverfd, int groupindex, int channelindex)
   (void) setsockopt(serverfd, IPPROTO_TCP, TCP_NODELAY,
     (char *)&optone, (socklen_t)sizeof(optone));
   (void) setsockopt(clientfd, IPPROTO_TCP, TCP_NODELAY,
+    (char *)&optone, (socklen_t)sizeof(optone));
+  (void) setsockopt(serverfd, SOL_SOCKET, SO_KEEPALIVE,
+    (char *)&optone, (socklen_t)sizeof(optone));
+  (void) setsockopt(clientfd, SOL_SOCKET, SO_KEEPALIVE,
     (char *)&optone, (socklen_t)sizeof(optone));
 
   for (;;) {
@@ -599,8 +647,7 @@ void *stream(int arg, int groupindex, int index, char *client_address,
     sigaction(SIGALRM, &alrm_action, NULL);
     alarm(connect_timeout);
 
-    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr))
-	< 0) {
+    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
       if (debugflag) {
 	if (errno == EINTR) {
 	  fprintf(stderr, "timeout group %d channel %d\n", groupindex,
@@ -616,6 +663,18 @@ void *stream(int arg, int groupindex, int index, char *client_address,
 
       c_writelock(groupindex, index);
       chn_c(common, groupindex, index)--;
+      if(autodisable) {
+	if(chn_status(common, groupindex, 0) != 0) {
+	  if(foreground) {
+	    fprintf(stderr, "connection failed group %d channel %d\n", groupindex, index);
+	    fprintf(stderr, "%s:%d needs to be enabled manually using balance -i after the problem is solved\n", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port));
+	  } else {
+	      syslog(LOG_NOTICE,"connection failed group %d channel %d", groupindex, index);
+	      syslog(LOG_NOTICE,"%s:%d needs to be enabled manually using balance -i after the problem is solved", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port));
+	  }
+	  chn_status(common, groupindex, 0) = 0;
+	}
+      }
       c_unlock(groupindex, index);
 
       b_readlock();
@@ -773,16 +832,17 @@ void usage(void)
   fprintf(stderr, "\n");
   fprintf(stderr, "balance %d.%d\n", release, subrelease);
   fprintf(stderr,
-	  "Copyright (c) 2000-2004,2005 by Inlab Software GmbH, Gruenwald, Germany.\n");
+	  "Copyright (c) 2000-2005,2006 by Inlab Software GmbH, Gruenwald, Germany.\n");
   fprintf(stderr, "All rights reserved.\n");
   fprintf(stderr, "\n");
 
   fprintf(stderr, "usage:\n");
-  fprintf(stderr, "  balance [-b addr] [-B addr] [-t sec] [-T sec] [-dfpH] \\\n");
+  fprintf(stderr, "  balance [-b addr] [-B addr] [-t sec] [-T sec] [-adfpHM] \\\n");
   fprintf(stderr, "          port [h1[:p1[:maxc1]] [!%%] [ ... hN[:pN[:maxcN]]]]\n");
   fprintf(stderr, "  balance [-b addr] -i [-d] port\n");
   fprintf(stderr, "  balance [-b addr] -c cmd  [-d] port\n");
   fprintf(stderr, "\n");
+  fprintf(stderr, "  -a        enable channel autodisable option\n");
   fprintf(stderr, "  -b host   bind to specific address on listen\n");
   fprintf(stderr, "  -B host   bind to specific address for outgoing connections\n");
   fprintf(stderr, "  -c cmd    execute specified interactive command\n");
@@ -790,6 +850,7 @@ void usage(void)
   fprintf(stderr, "  -f        stay in foregound\n");
   fprintf(stderr, "  -i        interactive control\n");
   fprintf(stderr, "  -H        failover even if Hash Type is used\n");
+  fprintf(stderr, "  -M        use MMAP instead of SHM for IPC\n");
   fprintf(stderr, "  -p        packetdump\n");
   fprintf(stderr, "  -t sec    specify connect timeout in seconds (default=%d)\n", DEFAULTTIMEOUT);
   fprintf(stderr, "  -T sec    timeout (seconds) for select (0 => never) (default=%d)\n", DEFAULTSELTIMEOUT);
@@ -807,8 +868,7 @@ void usage(void)
 
 // goto background: 
 
-void background(void)
-{
+void background(void) {
   int childpid;
   if ((childpid = fork()) < 0) {
     fprintf(stderr, "cannot fork\n");
@@ -1294,8 +1354,11 @@ int main(int argc, char *argv[])
   connect_timeout = DEFAULTTIMEOUT;
   initialize_release_variables();
 
-  while ((c = getopt(argc, argv, "c:b:B:t:T:dfpiH")) != EOF) {
+  while ((c = getopt(argc, argv, "c:b:B:t:T:adfpiHM")) != EOF) {
     switch (c) {
+    case 'a':
+      autodisable = 1;
+      break;
     case 'b':
       bindhost = optarg;
       break;
@@ -1337,6 +1400,13 @@ int main(int argc, char *argv[])
       break;
     case 'H':
       hashfailover = 1;
+      break;
+    case 'M':
+#ifdef	NO_MMAP
+      fprintf(stderr, "Warning: Built without memory mapped file support, using IPC\n");
+#else
+      shmmapfile = 1;
+#endif
       break;
     case '?':
     default:
@@ -1422,7 +1492,8 @@ int main(int argc, char *argv[])
     }
     umask(old);
   }
-  sprintf(rendezvousfile, "%sbalance.%d.%s", SHMDIR, source_port, bindhost_address);
+  sprintf(rendezvousfile, "%sbalance.%d.%s", SHMDIR, source_port,
+	  bindhost_address);
 
   if (stat(rendezvousfile, &buffer) == -1) {
     // File not existing yet ...
@@ -1483,6 +1554,7 @@ int main(int argc, char *argv[])
     background();
   }
 
+  openlog("Balance", LOG_ODELAY | LOG_PID | LOG_CONS, LOG_DAEMON);
   common = makecommon(argc, argv, source_port);
 
   listen(sockfd, SOMAXCONN);
